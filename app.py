@@ -3,7 +3,12 @@ import sqlite3
 from datetime import datetime
 import time
 
-st.set_page_config(page_title="Caja Fuerte: Misión 7 Dígitos", page_icon="🔐", layout="centered")
+st.set_page_config(
+    page_title="Caja Fuerte: Misión 7 Dígitos", 
+    page_icon="🔐", 
+    layout="centered",
+    initial_sidebar_state="collapsed" # Oculta la barra lateral automáticamente al entrar
+)
 
 # --- BASE DE DATOS LOCAL ---
 def init_db():
