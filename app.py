@@ -139,6 +139,11 @@ with st.sidebar:
     clave = st.text_input("Clave Secreta:", type="password")
     if clave == "1128906177":
         st.success("Acceso Autorizado")
+        # Botón para borrar los datos
+    if st.button("🗑️ Borrar todos los registros"):
+        st.session_state["registros"] = [] # O el nombre de la variable que uses para la lista
+        st.success("¡Registros borrados con éxito!")
+        st.rerun()
         st.subheader("🏆 Registros y Tiempos")
         datos = obtener_notas()
         if datos:
