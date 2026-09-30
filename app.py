@@ -133,17 +133,30 @@ problemas = [
     }
 ]
 
-# PANEL OCULTO PARA EL PROFESOR
+# --- FUNCIÓN PARA BORRAR REGISTROS DE LA BASE DE DATOS ---
+def borrar_todos_los_registros():
+    conn = sqlite3.connect("resultados.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM notas")
+    conn.commit()
+    conn.close()
+
+# --- PANEL OCULTO PARA EL PROFESOR ---
 with st.sidebar:
     st.title("🔒 Panel de Control")
     clave = st.text_input("Clave Secreta:", type="password")
+    
+    # TODO LO QUE ESTÁ AQUÍ ADENTRO TIENE 4 ESPACIOS DE SANGRÍA (INDENTADO)
     if clave == "1128906177":
         st.success("Acceso Autorizado")
-        # Botón para borrar los datos
-    if st.button("🗑️ Borrar todos los registros"):
-        st.session_state["registros"] = [] # O el nombre de la variable que uses para la lista
-        st.success("¡Registros borrados con éxito!")
-        st.rerun()
+        
+        # Botón de borrar DENTRO de la clave correcta
+        if st.button("🗑️ Borrar todos los registros", use_container_width=True):
+            borrar_todos_los_registros()
+            st.success("¡Registros borrados con éxito!")
+            time.sleep(1)
+            st.rerun()
+
         st.subheader("🏆 Registros y Tiempos")
         datos = obtener_notas()
         if datos:
