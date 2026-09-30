@@ -137,7 +137,7 @@ problemas = [
 with st.sidebar:
     st.title("🔒 Panel de Control")
     clave = st.text_input("Clave Secreta:", type="password")
-    if clave == "profe123":
+    if clave == "1128906177":
         st.success("Acceso Autorizado")
         st.subheader("🏆 Registros y Tiempos")
         datos = obtener_notas()
