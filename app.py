@@ -2,13 +2,13 @@ import streamlit as st
 import sqlite3
 from datetime import datetime
 import time
+import io
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
-st.set_page_config(
-    page_title="Caja Fuerte: Misión 7 Dígitos", 
-    page_icon="🔐", 
-    layout="centered",
-    initial_sidebar_state="collapsed" # Oculta la barra lateral automáticamente al entrar
-)
+st.set_page_config(page_title="Caja Fuerte: Misión 7 Dígitos", page_icon="🔐", layout="centered", initial_sidebar_state="collapsed")
 
 # --- BASE DE DATOS LOCAL ---
 def init_db():
@@ -43,6 +43,72 @@ def obtener_notas():
     datos = c.fetchall()
     conn.close()
     return datos
+
+def borrar_todos_los_registros():
+    conn = sqlite3.connect("resultados.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM notas")
+    conn.commit()
+    conn.close()
+
+# --- FUNCIÓN PARA GENERAR PDF ---
+def generar_pdf_reporte(datos):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    story = []
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'TitleStyle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor('#0F172A'),
+        alignment=1,
+        spaceAfter=12
+    )
+    subtitle_style = ParagraphStyle(
+        'SubtitleStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.HexColor('#64748B'),
+        alignment=1,
+        spaceAfter=20
+    )
+    
+    story.append(Paragraph("<b>REPORTE DE RESULTADOS: CAJA FUERTE</b>", title_style))
+    story.append(Paragraph(f"Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", subtitle_style))
+    
+    # Encabezados de la Tabla
+    tabla_datos = [["#", "Estudiante", "Puntaje", "Tiempo (s)", "Código", "Fecha"]]
+    
+    for i, row in enumerate(datos, 1):
+        tabla_datos.append([
+            str(i),
+            str(row[0]),
+            f"{row[1]} pts",
+            f"{row[2]}s",
+            str(row[3]),
+            str(row[4])
+        ])
+    
+    t = Table(tabla_datos, colWidths=[25, 160, 65, 65, 75, 110])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0284C7')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F8FAFC')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+    ]))
+    
+    story.append(t)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
 
 init_db()
 
@@ -87,7 +153,7 @@ if "registrado" not in st.session_state:
     st.session_state.inicio_tiempo = 0
     st.session_state.guardado = False
 
-# BANCO DE 7 PROBLEMAS CON DÍGITO RESULTADO
+# BANCO DE 7 PROBLEMAS
 problemas = [
     {
         "titulo": "🏎️ Problema 1: El Carro de Carreras y la Asíntota",
@@ -133,24 +199,29 @@ problemas = [
     }
 ]
 
-# --- FUNCIÓN PARA BORRAR REGISTROS DE LA BASE DE DATOS ---
-def borrar_todos_los_registros():
-    conn = sqlite3.connect("resultados.db")
-    c = conn.cursor()
-    c.execute("DELETE FROM notas")
-    conn.commit()
-    conn.close()
-
 # --- PANEL OCULTO PARA EL PROFESOR ---
 with st.sidebar:
     st.title("🔒 Panel de Control")
     clave = st.text_input("Clave Secreta:", type="password")
     
-    # TODO LO QUE ESTÁ AQUÍ ADENTRO TIENE 4 ESPACIOS DE SANGRÍA (INDENTADO)
     if clave == "1128906177":
         st.success("Acceso Autorizado")
         
-        # Botón de borrar DENTRO de la clave correcta
+        datos = obtener_notas()
+        
+        # Botón para descargar reporte PDF
+        if datos:
+            pdf_bytes = generar_pdf_reporte(datos)
+            st.download_button(
+                label="📄 Descargar Reporte PDF",
+                data=pdf_bytes,
+                file_name=f"Reporte_Resultados_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+            st.divider()
+        
+        # Botón para borrar registros
         if st.button("🗑️ Borrar todos los registros", use_container_width=True):
             borrar_todos_los_registros()
             st.success("¡Registros borrados con éxito!")
@@ -158,7 +229,6 @@ with st.sidebar:
             st.rerun()
 
         st.subheader("🏆 Registros y Tiempos")
-        datos = obtener_notas()
         if datos:
             for row in datos:
                 st.write(f"👤 **{row[0]}** — ⭐ {row[1]} pts ({row[2]}s)")
@@ -191,14 +261,12 @@ if not st.session_state.registrado:
             st.rerun()
 
 else:
-    # Encabezado del estudiante
     col1, col2 = st.columns(2)
     with col1:
         st.write(f"👤 **Alumno:** {st.session_state.nombre}")
     with col2:
         st.markdown(f"<span class='badge-score'>⭐ {st.session_state.puntos} PTS</span>", unsafe_allow_html=True)
     
-    # BANNER QUE GUARDA LOS DÍGITOS AUTOMÁTICAMENTE
     codigo_str = " ".join([f"[{d}]" for d in st.session_state.digitos])
     st.markdown(f"<div class='code-banner'>🔑 DÍGITOS CONSEGUIDOS: {codigo_str}</div>", unsafe_allow_html=True)
     
@@ -233,7 +301,7 @@ else:
                 st.error("❌ Dígito incorrecto. Inténtalo de nuevo.")
                 st.info(f"💡 Pista: {prob['pista']}")
 
-    # --- PANTALLA FINAL: DESBLOQUEO DE LA CAJA FUERTE ---
+    # --- PANTALLA FINAL ---
     else:
         codigo_final_str = "".join(st.session_state.digitos)
         tiempo_total = int(time.time() - st.session_state.inicio_tiempo)
