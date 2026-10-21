@@ -2,15 +2,21 @@ import streamlit as st
 import sqlite3
 from datetime import datetime
 import time
+import io
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
+# 1. CONFIGURACIÓN ÚNICA DE LA PÁGINA
 st.set_page_config(
     page_title="Caja Fuerte: Misión 7 Dígitos", 
     page_icon="🔐", 
-    layout="centered",
-    initial_sidebar_state="collapsed" # Oculta la barra lateral automáticamente al entrar
+    layout="centered", 
+    initial_sidebar_state="collapsed"
 )
 
-# --- BASE DE DATOS LOCAL ---
+# 2. BASE DE DATOS LOCAL
 def init_db():
     conn = sqlite3.connect("resultados.db")
     c = conn.cursor()
@@ -44,9 +50,74 @@ def obtener_notas():
     conn.close()
     return datos
 
+def borrar_todos_los_registros():
+    conn = sqlite3.connect("resultados.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM notas")
+    conn.commit()
+    conn.close()
+
+# 3. GENERADOR DE PDF
+def generar_pdf_reporte(datos):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    story = []
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'TitleStyle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor('#0F172A'),
+        alignment=1,
+        spaceAfter=12
+    )
+    subtitle_style = ParagraphStyle(
+        'SubtitleStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.HexColor('#64748B'),
+        alignment=1,
+        spaceAfter=20
+    )
+    
+    story.append(Paragraph("<b>REPORTE DE RESULTADOS: CAJA FUERTE</b>", title_style))
+    story.append(Paragraph(f"Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", subtitle_style))
+    
+    tabla_datos = [["#", "Estudiante", "Puntaje", "Tiempo (s)", "Código", "Fecha"]]
+    
+    for i, row in enumerate(datos, 1):
+        tabla_datos.append([
+            str(i),
+            str(row[0]),
+            f"{row[1]} pts",
+            f"{row[2]}s",
+            str(row[3]),
+            str(row[4])
+        ])
+    
+    t = Table(tabla_datos, colWidths=[25, 160, 65, 65, 75, 110])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0284C7')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F8FAFC')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+    ]))
+    
+    story.append(t)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
 init_db()
 
-# --- ESTILOS VISUALES ---
+# 4. ESTILOS VISUALES
 st.markdown("""
 <style>
     .stApp { background-color: #0F172A; color: #F8FAFC; }
@@ -77,7 +148,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Variables de Sesión
+# 5. VARIABLES DE SESIÓN
 if "registrado" not in st.session_state:
     st.session_state.registrado = False
     st.session_state.nombre = ""
@@ -87,7 +158,7 @@ if "registrado" not in st.session_state:
     st.session_state.inicio_tiempo = 0
     st.session_state.guardado = False
 
-# BANCO DE 7 PROBLEMAS CON DÍGITO RESULTADO
+# 6. BANCO DE 7 PROBLEMAS
 problemas = [
     {
         "titulo": "🏎️ Problema 1: El Carro de Carreras y la Asíntota",
@@ -133,24 +204,27 @@ problemas = [
     }
 ]
 
-# --- FUNCIÓN PARA BORRAR REGISTROS DE LA BASE DE DATOS ---
-def borrar_todos_los_registros():
-    conn = sqlite3.connect("resultados.db")
-    c = conn.cursor()
-    c.execute("DELETE FROM notas")
-    conn.commit()
-    conn.close()
-
-# --- PANEL OCULTO PARA EL PROFESOR ---
+# 7. PANEL DEL PROFESOR
 with st.sidebar:
     st.title("🔒 Panel de Control")
     clave = st.text_input("Clave Secreta:", type="password")
     
-    # TODO LO QUE ESTÁ AQUÍ ADENTRO TIENE 4 ESPACIOS DE SANGRÍA (INDENTADO)
     if clave == "1128906177":
         st.success("Acceso Autorizado")
         
-        # Botón de borrar DENTRO de la clave correcta
+        datos = obtener_notas()
+        
+        if datos:
+            pdf_bytes = generar_pdf_reporte(datos)
+            st.download_button(
+                label="📄 Descargar Reporte PDF",
+                data=pdf_bytes,
+                file_name=f"Reporte_Resultados_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+            st.divider()
+        
         if st.button("🗑️ Borrar todos los registros", use_container_width=True):
             borrar_todos_los_registros()
             st.success("¡Registros borrados con éxito!")
@@ -158,7 +232,6 @@ with st.sidebar:
             st.rerun()
 
         st.subheader("🏆 Registros y Tiempos")
-        datos = obtener_notas()
         if datos:
             for row in datos:
                 st.write(f"👤 **{row[0]}** — ⭐ {row[1]} pts ({row[2]}s)")
@@ -168,88 +241,8 @@ with st.sidebar:
         else:
             st.info("Sin entregas aún.")
 
+# 8. INTERFAZ PRINCIPAL
 st.title("🔐 ENCUENTRA LOS DÍGITOS PARA ABRIR LA CAJA FUERTE")
 st.caption("Resuelve cada problemática para descubrir los 7 dígitos de la combinación")
 
-# --- PASO 1: PANTALLA INICIAL ---
 if not st.session_state.registrado:
-    st.markdown("""
-    <div class='card-mission'>
-        <h2>🧰 Misión: Desbloquear la Caja Fuerte</h2>
-        <p>Aparecerán 7 problemáticas reales de límites y asíntotas (un carro, un laboratorio, un cohete, etc.).</p>
-        <p><b>Cada resultado obtenido corresponderá a un dígito de la clave.</b> ¡Se irán guardando automáticamente arriba para que no los olvides!</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    nombre_input = st.text_input("Ingresa tu Nombre y Apellido para iniciar:", placeholder="Ej: Mateo Gomez")
-    
-    if st.button("🚀 Comenzar Misión", use_container_width=True, type="primary"):
-        if nombre_input.strip() != "":
-            st.session_state.nombre = nombre_input
-            st.session_state.registrado = True
-            st.session_state.inicio_tiempo = time.time()
-            st.rerun()
-
-else:
-    # Encabezado del estudiante
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write(f"👤 **Alumno:** {st.session_state.nombre}")
-    with col2:
-        st.markdown(f"<span class='badge-score'>⭐ {st.session_state.puntos} PTS</span>", unsafe_allow_html=True)
-    
-    # BANNER QUE GUARDA LOS DÍGITOS AUTOMÁTICAMENTE
-    codigo_str = " ".join([f"[{d}]" for d in st.session_state.digitos])
-    st.markdown(f"<div class='code-banner'>🔑 DÍGITOS CONSEGUIDOS: {codigo_str}</div>", unsafe_allow_html=True)
-    
-    idx = st.session_state.nivel - 1
-
-    if idx < 7:
-        st.progress((idx + 1) / 7, text=f"Problema {idx + 1} de 7")
-        st.divider()
-
-        prob = problemas[idx]
-        
-        st.markdown(f"""
-        <div class='card-mission'>
-            <h3>{prob['titulo']}</h3>
-            <p style='font-size: 16px;'>{prob['enunciado']}</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        resp = st.number_input("Ingresa el resultado obtenido para este dígito:", value=0, step=1, key=f"prob_{idx}")
-
-        if st.button("🔓 CONFIRMAR Y GUARDAR DÍGITO", use_container_width=True, type="primary"):
-            if resp == prob["respuesta"]:
-                st.balloons()
-                st.success(f"¡Correcto! Has descubierto el dígito {idx + 1}: **{resp}**")
-                
-                st.session_state.digitos[idx] = str(resp)
-                st.session_state.puntos += 100
-                time.sleep(1.2)
-                st.session_state.nivel += 1
-                st.rerun()
-            else:
-                st.error("❌ Dígito incorrecto. Inténtalo de nuevo.")
-                st.info(f"💡 Pista: {prob['pista']}")
-
-    # --- PANTALLA FINAL: DESBLOQUEO DE LA CAJA FUERTE ---
-    else:
-        codigo_final_str = "".join(st.session_state.digitos)
-        tiempo_total = int(time.time() - st.session_state.inicio_tiempo)
-
-        if not st.session_state.guardado:
-            guardar_nota(st.session_state.nombre, st.session_state.puntos, tiempo_total, codigo_final_str)
-            st.session_state.guardado = True
-
-        st.balloons()
-        st.markdown(f"""
-        <div class='card-mission' style='border-color: #10B981; text-align: center;'>
-            <h2>🔓 ¡CAJA FUERTE DESBLOQUEADA!</h2>
-            <p>Ingresaste con éxito la combinación de 7 dígitos:</p>
-            <h1 style='color: #F59E0B; letter-spacing: 5px;'>{codigo_final_str}</h1>
-            <h2 style='color: #10B981;'>{st.session_state.puntos} PTS</h2>
-            <p>Tiempo empleado: <b>{tiempo_total} segundos</b>.</p>
-            <p style='color: #94A3B8; font-size: 13px;'>¡Felicidades {st.session_state.nombre}! Tu resultado fue guardado.</p>
-        </div>
-        """, unsafe_allow_html=True)
